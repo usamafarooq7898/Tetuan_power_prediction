@@ -1,46 +1,63 @@
 import tensorflow as tf
-# CRITICAL FIX: Explicitly import Keras metrics for deserialization compatibility
+# CRITICAL FIXES: Import Keras metrics/models explicitly for version compatibility
 from tensorflow.keras import metrics 
+from tensorflow.keras import models 
 
 import joblib
 from flask import Flask, request, jsonify
 import numpy as np
+import os # Added for robust file checking
+import traceback # Added for printing the full error stack
 
 # Initialize the Flask application
 app = Flask(__name__)
 
-# --- Load the Model and Scaler ---
-# Initialize globally to prevent 'is not defined' errors if loading fails
+# --- Initialize variables globally ---
 model = None
 scaler = None
 
+# --- File paths ---
+MODEL_PATH = 'lstm_power_prediction_model.h5'
+SCALER_PATH = 'Tetuan_power_prediction_scaler.pkl'
+
+# --- Load the Model and Scaler ---
 try:
-    # CRITICAL FIX for Deserialization Error: Pass the actual metric function object
-    # using the explicit Keras import (metrics)
+    # 1. CHECK FILE EXISTENCE
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(f"Model file not found at {MODEL_PATH}")
+    if not os.path.exists(SCALER_PATH):
+        raise FileNotFoundError(f"Scaler file not found at {SCALER_PATH}")
+        
+    # 2. LOAD WITH CUSTOM OBJECTS (Using explicit Keras metrics to fix deserialization)
     custom_objects = {
         'mse': metrics.mean_squared_error,
         'mae': metrics.mean_absolute_error 
-        # Add any other custom functions or metrics you used in your model training here
     }
 
-    model = tf.keras.models.load_model(
-        'lstm_power_prediction_model.h5', 
+    model = models.load_model(
+        MODEL_PATH, 
         custom_objects=custom_objects
     )
-    scaler = joblib.load('Tetuan_power_prediction_scaler.pkl')
+    scaler = joblib.load(SCALER_PATH)
     
     print("Model and Scaler loaded successfully!")
 
 except Exception as e:
-    # If deployment fails, this will now print the exact root cause
-    print(f"Error loading files: {e}")
+    # CRITICAL: Print the full stack trace to the server log
+    print("--- MODEL LOADING FAILED: BEGIN TRACEBACK ---")
+    traceback.print_exc()
+    print(f"Error loading files: {type(e).__name__}: {e}")
+    print("--- MODEL LOADING FAILED: END TRACEBACK ---")
 
 # --- Define the API Endpoint ---
 @app.route('/predict', methods=['POST'])
 def predict():
     # CRITICAL SAFETY CHECK: Ensures the API returns a meaningful error if load failed
     if model is None or scaler is None:
-        return jsonify({'error': 'Model or scaler failed to load during server startup. Check server logs in Render.'}), 500
+        return jsonify({
+            'error': 'Server initialization failed. Model/Scaler files were not loaded.',
+            'details': 'Check the latest Render server logs for FileNotFoundError or Keras deserialization errors.'
+        }), 500
     
     try:
         # 1. Get data from the POST request (expected as JSON)
