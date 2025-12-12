@@ -3,3 +3,4 @@ tensorflow
 joblib
 gunicorn
 numpy
+scikit-learn
