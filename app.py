@@ -1,13 +1,13 @@
 import tensorflow as tf
-# CRITICAL FIXES: Import Keras metrics/models explicitly for version compatibility
-from tensorflow.keras import metrics 
+# FINAL CRITICAL FIXES: Import Keras metrics/models explicitly and correctly
+from tensorflow.keras.metrics import MeanSquaredError, MeanAbsoluteError 
 from tensorflow.keras import models 
 
 import joblib
 from flask import Flask, request, jsonify
 import numpy as np
-import os # Added for robust file checking
-import traceback # Added for printing the full error stack
+import os 
+import traceback 
 
 # Initialize the Flask application
 app = Flask(__name__)
@@ -28,10 +28,11 @@ try:
     if not os.path.exists(SCALER_PATH):
         raise FileNotFoundError(f"Scaler file not found at {SCALER_PATH}")
         
-    # 2. LOAD WITH CUSTOM OBJECTS (Using explicit Keras metrics to fix deserialization)
+    # 2. LOAD WITH CUSTOM OBJECTS (THE FINAL, CORRECTED FIX)
     custom_objects = {
-        'mse': metrics.mean_squared_error,
-        'mae': metrics.mean_absolute_error 
+        # Using the directly imported class names without the 'metrics.' prefix
+        'mse': MeanSquaredError(), 
+        'mae': MeanAbsoluteError() 
     }
 
     model = models.load_model(
@@ -43,7 +44,7 @@ try:
     print("Model and Scaler loaded successfully!")
 
 except Exception as e:
-    # CRITICAL: Print the full stack trace to the server log
+    # CRITICAL: Print the full stack trace for diagnostics
     print("--- MODEL LOADING FAILED: BEGIN TRACEBACK ---")
     traceback.print_exc()
     print(f"Error loading files: {type(e).__name__}: {e}")
@@ -56,7 +57,7 @@ def predict():
     if model is None or scaler is None:
         return jsonify({
             'error': 'Server initialization failed. Model/Scaler files were not loaded.',
-            'details': 'Check the latest Render server logs for FileNotFoundError or Keras deserialization errors.'
+            'details': 'Check the latest Render server logs for errors.'
         }), 500
     
     try:
@@ -87,6 +88,6 @@ def predict():
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-# --- The hosting service (Gunicorn) will ignore this, but it's good for local testing ---
+# --- Local testing hook ---
 if __name__ == '__main__':
     app.run(debug=True)
