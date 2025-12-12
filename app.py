@@ -9,8 +9,17 @@ app = Flask(__name__)
 # --- Load the Model and Scaler ---
 # It's crucial to load these outside the prediction function so they only load once
 try:
-    model = tf.keras.models.load_model('lstm_power_prediction_model.h5')
-    scaler = joblib.load('Tetuan_power_prediction_scaler.pkl')
+# Define custom objects to handle the Keras metric (e.g., if you used custom MSE/MAE)
+custom_objects = {
+    'mse': tf.keras.metrics.mean_squared_error,
+    'mae': tf.keras.metrics.mean_absolute_error 
+    # Add any other custom functions or metrics you used in your model training here
+}
+
+model = tf.keras.models.load_model(
+    'lstm_power_prediction_model.h5', 
+    custom_objects=custom_objects
+)    scaler = joblib.load('Tetuan_power_prediction_scaler.pkl')
     print("Model and Scaler loaded successfully!")
 except Exception as e:
     # If deployment fails, this error helps you debug why the files weren't found/loaded
