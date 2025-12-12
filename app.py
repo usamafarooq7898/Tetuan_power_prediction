@@ -8,6 +8,8 @@ app = Flask(__name__)
 
 # --- Load the Model and Scaler ---
 # It's crucial to load these outside the prediction function so they only load once
+model=None
+scaler=None
 try:
 # Define custom objects to handle the Keras metric (e.g., if you used custom MSE/MAE)
 custom_objects = {
