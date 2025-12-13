@@ -1,13 +1,16 @@
+import os
+import numpy as np
 import tensorflow as tf
-# FINAL CRITICAL FIXES: Import Keras metrics/models explicitly and correctly
-from tensorflow.keras.metrics import MeanSquaredError, MeanAbsoluteError 
+import joblib
+import traceback
+import logging
+from flask import Flask, request, jsonify
+from tensorflow.keras.models import load_model
+from tensorflow.keras.metrics import MeanSquaredError, MeanAbsoluteError # Import classes directly
 from tensorflow.keras import models 
 
-import joblib
-from flask import Flask, request, jsonify
-import numpy as np
-import os 
-import traceback 
+# --- CONFIGURATION AND LOGGING ---
+logging.basicConfig(level=logging.INFO)
 
 # Initialize the Flask application
 app = Flask(__name__)
@@ -19,6 +22,7 @@ scaler = None
 # --- File paths ---
 MODEL_PATH = 'lstm_power_prediction_model.h5'
 SCALER_PATH = 'Tetuan_power_prediction_scaler.pkl'
+TIMESTEPS = 24 # Define the fixed timestep length
 
 # --- Load the Model and Scaler ---
 try:
@@ -29,26 +33,27 @@ try:
         raise FileNotFoundError(f"Scaler file not found at {SCALER_PATH}")
         
     # 2. LOAD WITH CUSTOM OBJECTS (THE FINAL, CORRECTED FIX)
+    # Use the class name itself as the key and the class reference as the value
     custom_objects = {
-        # Using the directly imported class names without the 'metrics.' prefix
-        'mse': MeanSquaredError(), 
-        'mae': MeanAbsoluteError() 
+        'MeanSquaredError': MeanSquaredError,  
+        'MeanAbsoluteError': MeanAbsoluteError 
     }
 
-    model = models.load_model(
+    model = load_model(
         MODEL_PATH, 
         custom_objects=custom_objects
     )
+    # Ensure the correct 1-feature scaler is loaded!
     scaler = joblib.load(SCALER_PATH)
     
-    print("Model and Scaler loaded successfully!")
+    logging.info("Model and Scaler loaded successfully!")
 
 except Exception as e:
     # CRITICAL: Print the full stack trace for diagnostics
-    print("--- MODEL LOADING FAILED: BEGIN TRACEBACK ---")
+    logging.error("--- MODEL LOADING FAILED: BEGIN TRACEBACK ---")
     traceback.print_exc()
-    print(f"Error loading files: {type(e).__name__}: {e}")
-    print("--- MODEL LOADING FAILED: END TRACEBACK ---")
+    logging.error(f"Error loading files: {type(e).__name__}: {e}")
+    logging.error("--- MODEL LOADING FAILED: END TRACEBACK ---")
 
 # --- Define the API Endpoint ---
 @app.route('/predict', methods=['POST'])
@@ -63,31 +68,54 @@ def predict():
     try:
         # 1. Get data from the POST request (expected as JSON)
         data = request.get_json(force=True)
+        features = data.get('features')
+        
+        if not features:
+             return jsonify({"error": "Missing 'features' in request body."}), 400
 
-        # 2. Extract and format the input features 
-        input_data = np.array(data['features']).reshape(-1, 1) 
+        # 2. Convert input features and reshape for Scaler (2D: (N_timesteps, 1_feature))
+        # Input: (24,) -> Output: (24, 1)
+        input_array_2d = np.array(features, dtype=np.float32).reshape(-1, 1)
 
         # 3. Apply the same scaler used during training
-        scaled_data = scaler.transform(input_data)
+        scaled_data = scaler.transform(input_array_2d)
+        logging.info(f"Shape after scaling (2D): {scaled_data.shape}")
 
-        # 4. Reshape for the LSTM model
-        timesteps = 24 
-        lstm_input = scaled_data.reshape(1, timesteps, 1) 
+        # 4. Reshape for the LSTM model (3D: (1_sample, N_timesteps, 1_feature))
+        # Input: (24, 1) -> Output: (1, 24, 1)
+        # np.newaxis is the most reliable way to add the batch dimension.
+        lstm_input = scaled_data[np.newaxis, :, :] 
+        logging.info(f"Shape before model (3D): {lstm_input.shape}")
 
         # 5. Make prediction
         prediction_scaled = model.predict(lstm_input)
 
-        # 6. Inverse transform the output
+        # 6. Inverse transform the output (Prediction output is (1, 1))
         prediction_actual = scaler.inverse_transform(prediction_scaled) 
 
         # 7. Return the prediction as a JSON response
+        # Extract the single float value from the (1, 1) array.
+        final_prediction = float(prediction_actual[0][0])
+        
         return jsonify({
-            'prediction': prediction_actual.flatten().tolist()[0]
+            'prediction': final_prediction,
+            'unit': 'kW',
+            'input_shape_used': str(lstm_input.shape)
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        # Use traceback logging for errors inside the predict route too!
+        logging.error("--- PREDICTION FAILED: BEGIN TRACEBACK ---")
+        traceback.print_exc()
+        logging.error(f"Error during prediction: {type(e).__name__}: {e}")
+        logging.error("--- PREDICTION FAILED: END TRACEBACK ---")
+        
+        return jsonify({
+            'error': 'Prediction processing failed.', 
+            'details': str(e)
+        }), 500
 
 # --- Local testing hook ---
+# Gunicorn handles running this in Render, this block is for local testing only
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000)
