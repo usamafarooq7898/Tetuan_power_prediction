@@ -17,9 +17,8 @@ scaler = None
 # --- File Paths ---
 MODEL_PATH_LSTM = 'lstm_power_prediction_model.h5'
 MODEL_PATH_CNN = 'cnn_power_prediction_model.h5'
-# FINAL CLEANED FILENAME
 DATA_PATH = 'tetuan_power_consumption_data.csv' 
-TIME_STEPS = 24  # Lookback period for LSTM/CNN
+TIME_STEPS = 24  
 
 # --- Worker Initialization (Executed when Gunicorn worker starts) ---
 try:
@@ -27,8 +26,8 @@ try:
     lstm_model = load_model(MODEL_PATH_LSTM)
     cnn_model = load_model(MODEL_PATH_CNN)
     
-    # Load data for scaler fitting
-    df = pd.read_csv(DATA_PATH)
+    # Load data for scaler fitting - ADDED encoding='latin-1'
+    df = pd.read_csv(DATA_PATH, encoding='latin-1')
     
     # Select feature columns (8 columns needed for your model input shape [24, 8])
     feature_cols = df.columns[1:9]
@@ -38,7 +37,6 @@ try:
     scaler.fit(data_for_scaler)
     
 except Exception as e:
-    # This print helps debug if loading fails inside the Gunicorn worker
     print(f"ERROR: Worker failed to load models/scaler. Error: {e}")
 
 # --- Flask App Initialization ---
@@ -131,4 +129,5 @@ def predict():
         app.logger.error(f"Prediction failed: {e}")
         return jsonify({"error": "An error occurred during prediction."}), 500
 
-if __name__ ==
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=PORT, debug=True)

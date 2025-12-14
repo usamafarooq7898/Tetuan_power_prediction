@@ -3,16 +3,14 @@ from keras.models import load_model
 
 MODEL_PATH_LSTM = 'lstm_power_prediction_model.h5'
 MODEL_PATH_CNN = 'cnn_power_prediction_model.h5'
-# FINAL CLEANED FILENAME
 DATA_PATH = 'tetuan_power_consumption_data.csv' 
 
 # This script runs FIRST and verifies that all files exist and are loadable.
 try:
     print("INFO: --- STARTING INITIALIZATION CHECK ---")
     
-    # 1. Verify data file exists and can be read
-    # This line will now look for the clean filename.
-    df = pd.read_csv(DATA_PATH)
+    # 1. Verify data file exists and can be read - ADDED encoding='latin-1'
+    df = pd.read_csv(DATA_PATH, encoding='latin-1')
     print("INFO: Data file loaded successfully.")
 
     # 2. Verify models exist and can be loaded
