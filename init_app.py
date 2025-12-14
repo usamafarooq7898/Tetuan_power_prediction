@@ -10,14 +10,13 @@ try:
     print("INFO: --- STARTING INITIALIZATION CHECK ---")
     
     # 1. Verify data file exists and can be read (FINAL FINAL FIX: Regex separator and index column)
-    # Using sep=r'\s+' handles any whitespace (tabs/spaces) as a delimiter.
-    # index_col=0 treats the first column as an index, resolving the 'saw 3 fields' error.
     df = pd.read_csv(DATA_PATH, encoding='latin-1', sep=r'\s+', index_col=0)
     print("INFO: Data file loaded successfully.")
 
     # 2. Verify models exist and can be loaded
-    load_model(MODEL_PATH_LSTM)
-    load_model(MODEL_PATH_CNN)
+    # FIX: Adding compile=False to bypass layer deserialization issues caused by version mismatch.
+    load_model(MODEL_PATH_LSTM, compile=False)
+    load_model(MODEL_PATH_CNN, compile=False)
     print("INFO: All models loaded successfully.")
 
 except Exception as e:
