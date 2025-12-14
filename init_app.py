@@ -10,7 +10,7 @@ try:
     print("INFO: --- STARTING INITIALIZATION CHECK ---")
     
     # 1. Verify data file exists and can be read - ADDED encoding='latin-1'
-    df = pd.read_csv(DATA_PATH, encoding='latin-1')
+    df = pd.read_csv(DATA_PATH, encoding='latin-1', sep=';')
     print("INFO: Data file loaded successfully.")
 
     # 2. Verify models exist and can be loaded

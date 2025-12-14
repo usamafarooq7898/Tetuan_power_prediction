@@ -27,7 +27,7 @@ try:
     cnn_model = load_model(MODEL_PATH_CNN)
     
     # Load data for scaler fitting - ADDED encoding='latin-1'
-    df = pd.read_csv(DATA_PATH, encoding='latin-1')
+    df = pd.read_csv(DATA_PATH, encoding='latin-1', sep=';')
     
     # Select feature columns (8 columns needed for your model input shape [24, 8])
     feature_cols = df.columns[1:9]
