@@ -6,7 +6,6 @@ import traceback
 import logging
 from flask import Flask, request, jsonify
 from tensorflow.keras.models import load_model
-from tensorflow.keras.metrics import MeanSquaredError, MeanAbsoluteError # Import classes directly
 
 # --- CONFIGURATION AND LOGGING ---
 logging.basicConfig(level=logging.INFO)
@@ -19,8 +18,11 @@ model = None
 scaler = None
 
 # --- File paths & Constants ---
-MODEL_PATH = 'cnn_power_prediction_model.h5' # Use CNN model path if you want to deploy the better model
+# Use the correct file path for the model you wish to deploy (CNN was superior)
+MODEL_PATH = 'cnn_power_prediction_model.h5' 
 SCALER_PATH = 'Tetuan_power_prediction_scaler.pkl'
+
+# These constants MUST match your training data/model setup
 TIMESTEPS = 24       # Window size
 N_FEATURES = 8       # 5 weather + 3 power zones (Input features)
 N_TARGETS = 3        # 3 power zones (Output targets)
@@ -32,13 +34,9 @@ try:
     if not os.path.exists(SCALER_PATH):
         raise FileNotFoundError(f"Scaler file not found at {SCALER_PATH}")
         
-    # Load with custom metrics used during compilation
-    custom_objects = {
-        'MeanSquaredError': MeanSquaredError,
-        'MeanAbsoluteError': MeanAbsoluteError
-    }
-
-    model = load_model(MODEL_PATH, custom_objects=custom_objects)
+    # FIX: We remove 'custom_objects' to resolve the Keras serialization error.
+    # Keras load_model should find the standard loss/metrics (mse, mae) internally.
+    model = load_model(MODEL_PATH)
     scaler = joblib.load(SCALER_PATH)
     
     logging.info("Model and Scaler loaded successfully!")
@@ -49,14 +47,19 @@ except Exception as e:
     logging.error(f"Error loading files: {type(e).__name__}: {e}")
     logging.error("--- MODEL LOADING FAILED: END TRACEBACK ---")
 
-# --- Helper Function for Inverse Transformation ---
-# This is the crucial logic copied from your successful notebook evaluation
+# --- Helper Function for Inverse Transformation (Crucial for 8-column scaler) ---
 def inverse_transform_targets(y_scaled):
-    """Takes scaled targets (N, 3) and inverse-transforms them using the 8-column scaler."""
-    dummy = np.zeros((y_scaled.shape[0], N_FEATURES))
-    dummy[:, -N_TARGETS:] = y_scaled  # Place the 3 predictions into the last 3 columns
+    """
+    Takes scaled targets (N, 3) and inverse-transforms them using the 8-column scaler.
+    """
+    # Create an 8-column dummy array
+    dummy = np.zeros((y_scaled.shape[0], N_FEATURES)) 
+    # Place the 3 predictions into the last 3 columns
+    dummy[:, -N_TARGETS:] = y_scaled 
+    # Inverse transform the dummy array
     inv = scaler.inverse_transform(dummy)
-    return inv[:, -N_TARGETS:] # Return only the 3 inverse-transformed target values
+    # Return only the 3 inverse-transformed target values
+    return inv[:, -N_TARGETS:] 
 
 # --- Define the API Endpoints ---
 
@@ -66,7 +69,7 @@ def index():
     return jsonify({
         'status': 'Service is online',
         'message': 'Use the /predict endpoint via POST to get forecasts.',
-        'model': MODEL_PATH
+        'model_name': MODEL_PATH
     }), 200
 
 @app.route('/predict', methods=['POST'])
@@ -99,10 +102,11 @@ def predict():
         model_input = scaled_input[np.newaxis, :, :] 
         
         # 3. Make prediction: Output shape is (1, 3)
-        prediction_scaled = model.predict(model_input)[0] # [0] to get (3,) array
+        # [0] to get the (3,) array of predictions
+        prediction_scaled = model.predict(model_input)[0] 
 
         # 4. Inverse transform the 3 outputs using the helper function
-        # We pass a (1, 3) array (reshaping the (3,) prediction_scaled)
+        # Pass a (1, 3) array to the helper function
         prediction_actual = inverse_transform_targets(prediction_scaled[np.newaxis, :])
         
         # 5. Format results
