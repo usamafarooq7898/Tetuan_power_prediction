@@ -1,6 +1,6 @@
 flask
-tensorflow
+tensorflow==2.15.0
 joblib
 gunicorn
-numpy
+numpy==1.26.4
 scikit-learn
