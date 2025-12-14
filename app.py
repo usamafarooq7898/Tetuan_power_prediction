@@ -18,7 +18,7 @@ scaler = None
 MODEL_PATH_LSTM = 'lstm_power_prediction_model.h5'
 MODEL_PATH_CNN = 'cnn_power_prediction_model.h5'
 DATA_PATH = 'tetuan_power_consumption_data.csv' 
-TIME_STEPS = 24  
+TIME_STEPS = 24  # Lookback period for LSTM/CNN
 
 # --- Worker Initialization (Executed when Gunicorn worker starts) ---
 try:
@@ -26,10 +26,11 @@ try:
     lstm_model = load_model(MODEL_PATH_LSTM)
     cnn_model = load_model(MODEL_PATH_CNN)
     
-    # Load data for scaler fitting - ADDED encoding='latin-1'
+    # Load data for scaler fitting (FINAL FIXES: encoding and separator)
     df = pd.read_csv(DATA_PATH, encoding='latin-1', sep=';')
     
     # Select feature columns (8 columns needed for your model input shape [24, 8])
+    # Assuming columns 1 to 9 (Date/Time is 0, then 8 features)
     feature_cols = df.columns[1:9]
     data_for_scaler = df[feature_cols].values
     
@@ -37,6 +38,7 @@ try:
     scaler.fit(data_for_scaler)
     
 except Exception as e:
+    # This print helps debug if loading fails inside the Gunicorn worker
     print(f"ERROR: Worker failed to load models/scaler. Error: {e}")
 
 # --- Flask App Initialization ---
@@ -47,6 +49,9 @@ def prepare_data_for_prediction(data_point):
     """
     Prepares a single 24-hour block of data for model input.
     """
+    
+    # Note: If you encounter key errors here, you might need to adjust feature_cols to 
+    # match the exact column names after the semicolon separation is used.
     try:
         df_input = pd.DataFrame(data_point)
         
@@ -79,6 +84,7 @@ def home():
     if lstm_model and cnn_model and scaler:
         return "Service is running and models are loaded.", 200
     else:
+        # This occurs if the worker failed the try-except block above
         return "Service is running, but models failed to load in the worker process. Check logs.", 500
 
 

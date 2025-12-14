@@ -9,7 +9,7 @@ DATA_PATH = 'tetuan_power_consumption_data.csv'
 try:
     print("INFO: --- STARTING INITIALIZATION CHECK ---")
     
-    # 1. Verify data file exists and can be read - ADDED encoding='latin-1'
+    # 1. Verify data file exists and can be read (FINAL FIXES: encoding and separator)
     df = pd.read_csv(DATA_PATH, encoding='latin-1', sep=';')
     print("INFO: Data file loaded successfully.")
 
@@ -19,7 +19,7 @@ try:
     print("INFO: All models loaded successfully.")
 
 except Exception as e:
-    # If this fails, the deployment stops immediately, which is what we want.
+    # If this fails, the deployment stops immediately.
     print(f"FATAL ERROR: Initialization check failed before server start. The models or data file could not be read. Error: {e}")
     exit(1)
 
