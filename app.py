@@ -26,8 +26,8 @@ try:
     lstm_model = load_model(MODEL_PATH_LSTM)
     cnn_model = load_model(MODEL_PATH_CNN)
     
-    # Load data for scaler fitting (FINAL FIX: Tab Separator)
-    df = pd.read_csv(DATA_PATH, encoding='latin-1', sep='\t')
+    # Load data for scaler fitting (FINAL FINAL FIX: Regex separator and index column)
+    df = pd.read_csv(DATA_PATH, encoding='latin-1', sep=r'\s+', index_col=0)
     
     # Select feature columns (8 columns needed for your model input shape [24, 8])
     # Assuming columns 1 to 9 (Date/Time is 0, then 8 features)
@@ -50,8 +50,7 @@ def prepare_data_for_prediction(data_point):
     Prepares a single 24-hour block of data for model input.
     """
     
-    # Note: If you encounter key errors here, you might need to adjust feature_cols to 
-    # match the exact column names after the tab separation is used.
+    # Feature columns based on the file's structure.
     try:
         df_input = pd.DataFrame(data_point)
         

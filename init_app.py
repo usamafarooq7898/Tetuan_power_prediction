@@ -9,8 +9,10 @@ DATA_PATH = 'tetuan_power_consumption_data.csv'
 try:
     print("INFO: --- STARTING INITIALIZATION CHECK ---")
     
-    # 1. Verify data file exists and can be read (FINAL FIX: Tab Separator)
-    df = pd.read_csv(DATA_PATH, encoding='latin-1', sep='\t')
+    # 1. Verify data file exists and can be read (FINAL FINAL FIX: Regex separator and index column)
+    # Using sep=r'\s+' handles any whitespace (tabs/spaces) as a delimiter.
+    # index_col=0 treats the first column as an index, resolving the 'saw 3 fields' error.
+    df = pd.read_csv(DATA_PATH, encoding='latin-1', sep=r'\s+', index_col=0)
     print("INFO: Data file loaded successfully.")
 
     # 2. Verify models exist and can be loaded
