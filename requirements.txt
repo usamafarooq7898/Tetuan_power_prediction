@@ -4,3 +4,5 @@ joblib
 gunicorn
 numpy==1.26.4
 scikit-learn
+h5py
+pandas
