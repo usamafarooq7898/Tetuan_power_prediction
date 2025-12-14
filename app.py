@@ -1,138 +1,39 @@
-import os
-import numpy as np
-import pandas as pd
-from flask import Flask, request, jsonify
-from keras.models import load_model
-from sklearn.preprocessing import StandardScaler
-from datetime import datetime, timedelta
+# Insert this entire block inside your @app.route('/predict', methods=['POST']) function:
 
-# --- Configuration ---
-PORT = int(os.environ.get("PORT", 10000))
+# 1. Define the missing columns (the three past load values)
+MISSING_LOAD_COLUMNS = [
+    "Zone 1 Power Consumption",
+    "Zone 2 Power Consumption",
+    "Zone 3 Power Consumption"
+]
 
-# Global variables initialized to None
-lstm_model = None
-cnn_model = None
-scaler = None
-
-# --- File Paths ---
-MODEL_PATH_LSTM = 'lstm_power_prediction_model.h5'
-MODEL_PATH_CNN = 'cnn_power_prediction_model.h5'
-DATA_PATH = 'tetuan_power_consumption_data.csv' 
-TIME_STEPS = 24  # Lookback period for LSTM/CNN
-
-# --- Worker Initialization (Executed when Gunicorn worker starts) ---
+# 2. Get the incoming data (which only has 5 features per timestep)
 try:
-    # Load models and scaler for the worker process
-    lstm_model = load_model(MODEL_PATH_LSTM)
-    cnn_model = load_model(MODEL_PATH_CNN)
+    json_data = request.json
+    if not isinstance(json_data, list):
+        return jsonify({"status": "error", "message": "Input must be a list of 24 time steps."}), 400
+except Exception:
+    return jsonify({"status": "error", "message": "Invalid JSON input format."}), 400
+
+# 3. Apply the Padding/Imputation Fix
+# We iterate through each of the 24 time steps (dictionaries) and add the 
+# missing keys with a default value of 0.0 (Zero Imputation).
+padded_data = []
+
+for time_step in json_data:
+    # setdefault adds the key and sets the value to 0.0 only if the key is missing.
+    time_step.setdefault(MISSING_LOAD_COLUMNS[0], 0.0)
+    time_step.setdefault(MISSING_LOAD_COLUMNS[1], 0.0)
+    time_step.setdefault(MISSING_LOAD_COLUMNS[2], 0.0)
     
-    # Load data for scaler fitting (FINAL FINAL FIX: Regex separator and index column)
-    df = pd.read_csv(DATA_PATH, encoding='latin-1', sep=r'\s+', index_col=0)
-    
-    # Select feature columns (8 columns needed for your model input shape [24, 8])
-    # Assuming columns 1 to 9 (Date/Time is 0, then 8 features)
-    feature_cols = df.columns[1:9]
-    data_for_scaler = df[feature_cols].values
-    
-    scaler = StandardScaler()
-    scaler.fit(data_for_scaler)
-    
-except Exception as e:
-    # This print helps debug if loading fails inside the Gunicorn worker
-    print(f"ERROR: Worker failed to load models/scaler. Error: {e}")
+    # The dictionary 'time_step' now correctly has 8 keys (5 original + 3 padded)
+    padded_data.append(time_step)
 
-# --- Flask App Initialization ---
-app = Flask(__name__)
+# 4. CRITICAL STEP: Now, your original code that converts data to 
+# a DataFrame/NumPy array MUST use 'padded_data' instead of 'request.json' 
+# or the original 'json_data' variable.
 
-# --- Helper Function for Prediction ---
-def prepare_data_for_prediction(data_point):
-    """
-    Prepares a single 24-hour block of data for model input.
-    """
-    
-    # Feature columns based on the file's structure.
-    try:
-        df_input = pd.DataFrame(data_point)
-        
-        feature_cols = [
-            "Temperature", "Humidity", "Wind Speed", 
-            "general diffuse flows", "diffuse flows", 
-            "Zone 1 Power Consumption", "Zone 2 Power Consumption", 
-            "Zone 3 Power Consumption"
-        ]
-        
-        input_data = df_input[feature_cols].values
-        
-        # Scale the data using the fitted scaler
-        input_data_scaled = scaler.transform(input_data)
-        
-        # Reshape to (1, TIME_STEPS, n_features) -> (1, 24, 8)
-        X = input_data_scaled.reshape(1, TIME_STEPS, len(feature_cols))
-        
-        return X
-    
-    except Exception as e:
-        app.logger.error(f"Data preparation failed: {e}")
-        return None
-
-# --- API Routes ---
-
-@app.route("/", methods=["GET"])
-def home():
-    """Simple status check for the service."""
-    if lstm_model and cnn_model and scaler:
-        return "Service is running and models are loaded.", 200
-    else:
-        # This occurs if the worker failed the try-except block above
-        return "Service is running, but models failed to load in the worker process. Check logs.", 500
-
-
-@app.route("/predict", methods=["POST"])
-def predict():
-    """
-    Receives 24 hours of data and returns a 1-hour ahead prediction.
-    """
-    
-    if not lstm_model or not cnn_model or not scaler:
-        return jsonify({"error": "Models or Scaler not loaded in worker. Cannot predict."}), 500
-
-    data = request.get_json(force=True)
-    
-    if not isinstance(data, list) or len(data) != TIME_STEPS:
-        return jsonify({
-            "error": f"Invalid input format. Expected a list of exactly {TIME_STEPS} data points (dictionaries)."
-        }), 400
-
-    X = prepare_data_for_prediction(data)
-    if X is None:
-        return jsonify({"error": "Failed to process input data for prediction."}), 400
-
-    try:
-        lstm_prediction_scaled = lstm_model.predict(X)
-        cnn_prediction_scaled = cnn_model.predict(X)
-        
-        # Inverse transform the prediction (assuming Zone 1 Power Consumption - index 5)
-        dummy_array_lstm = np.zeros((1, scaler.n_features_in_))
-        dummy_array_lstm[0, 5] = lstm_prediction_scaled[0, 0]
-        
-        dummy_array_cnn = np.zeros((1, scaler.n_features_in_))
-        dummy_array_cnn[0, 5] = cnn_prediction_scaled[0, 0]
-        
-        lstm_prediction_inverse = scaler.inverse_transform(dummy_array_lstm)[0, 5]
-        cnn_prediction_inverse = scaler.inverse_transform(dummy_array_cnn)[0, 5]
-        
-        ensemble_prediction = (lstm_prediction_inverse + cnn_prediction_inverse) / 2
-        
-        return jsonify({
-            "status": "success",
-            "lstm_prediction": round(float(lstm_prediction_inverse), 2),
-            "cnn_prediction": round(float(cnn_prediction_inverse), 2),
-            "ensemble_prediction": round(float(ensemble_prediction), 2)
-        })
-
-    except Exception as e:
-        app.logger.error(f"Prediction failed: {e}")
-        return jsonify({"error": "An error occurred during prediction."}), 500
-
-if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=PORT, debug=True)
+# Example of what comes next in your app.py:
+# data_df = pd.DataFrame(padded_data) 
+# data_array = data_df.values
+# ... (feed data_array to your model)
