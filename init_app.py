@@ -1,5 +1,8 @@
 import pandas as pd
-from keras.models import load_model
+# Change import to use TensorFlow's Keras backend explicitly
+from tensorflow.keras.models import load_model
+# Import CustomObjectScope from tf.keras.utils
+from tensorflow.keras.utils import CustomObjectScope 
 
 MODEL_PATH_LSTM = 'lstm_power_prediction_model.h5'
 MODEL_PATH_CNN = 'cnn_power_prediction_model.h5'
@@ -9,14 +12,17 @@ DATA_PATH = 'tetuan_power_consumption_data.csv'
 try:
     print("INFO: --- STARTING INITIALIZATION CHECK ---")
     
-    # 1. Verify data file exists and can be read (FINAL FINAL FIX: Regex separator and index column)
+    # 1. Verify data file exists and can be read
     df = pd.read_csv(DATA_PATH, encoding='latin-1', sep=r'\s+', index_col=0)
     print("INFO: Data file loaded successfully.")
 
     # 2. Verify models exist and can be loaded
-    # FIX: Adding compile=False to bypass layer deserialization issues caused by version mismatch.
-    load_model(MODEL_PATH_LSTM, compile=False)
-    load_model(MODEL_PATH_CNN, compile=False)
+    # FIX 2: Using CustomObjectScope from tf.keras.utils 
+    # and importing load_model from tf.keras to resolve version conflicts.
+    with CustomObjectScope({}):
+        load_model(MODEL_PATH_LSTM, compile=False)
+        load_model(MODEL_PATH_CNN, compile=False)
+    
     print("INFO: All models loaded successfully.")
 
 except Exception as e:
